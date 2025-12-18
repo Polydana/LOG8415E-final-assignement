@@ -12,12 +12,19 @@ Full automation script:
 import os
 import time
 import subprocess
+import sys
+import argparse
+
 
 import requests
 from botocore.exceptions import ClientError
 
 from dotenv import load_dotenv
 load_dotenv()  # Load AWS_* and API_TOKEN from .env BEFORE touching boto3
+
+parser = argparse.ArgumentParser(description="LOG8415E final deployment automation.")
+parser.add_argument("--no-cleanup", action="store_true", help="Do not terminate instances at the end.")
+args = parser.parse_args()
 
 # This must match the token used in Gatekeeper user-data
 API_TOKEN = os.getenv("API_TOKEN", "supersecret123")
@@ -77,10 +84,11 @@ def run_benchmarks(gatekeeper_url: str) -> None:
 
         # READ benchmark
         subprocess.run(
-            ["python3", "-m", "benchmarking.run_reads"],
+            [sys.executable, "-m", "benchmarking.run_reads"],
             env=env,
             check=False,
         )
+
 
         print("\n" + "=" * 70)
         print(f"[BENCHMARK] Strategy = {strategy} (WRITES)")
@@ -88,10 +96,11 @@ def run_benchmarks(gatekeeper_url: str) -> None:
 
         # WRITE benchmark
         subprocess.run(
-            ["python3", "-m", "benchmarking.run_writes"],
+            [sys.executable, "-m", "benchmarking.run_writes"],
             env=env,
             check=False,
         )
+
 
 
 def main():
@@ -217,6 +226,19 @@ def main():
     print(f"  - Gatekeeper: {gatekeeper_public_ip} (id={gatekeeper_id})")
     print("[INFO] Benchmarks were executed against the Gatekeeper /sql endpoint.")
     print("[INFO] Check console output and logs on instances for detailed results.")
+
+    # --------------------------------------------------------------------------------
+    # 7) Automatic cleanup unless --no-cleanup was passed
+    # --------------------------------------------------------------------------------
+    all_ids = [manager_id] + worker_ids + [proxy_id] + [gatekeeper_id]
+
+    if args.no_cleanup:
+        print("[INFO] --no-cleanup passed. Instances will remain running.")
+        print("[INFO] Make sure to terminate them manually in AWS to avoid charges.")
+    else:
+        print("[INFO] Terminating all EC2 instances automatically...")
+        ec2_utils.terminate_instances(all_ids)
+        print("[INFO] Termination requested. Verify status in AWS console.")
 
 
 if __name__ == "__main__":
