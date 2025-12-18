@@ -19,17 +19,14 @@ from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 load_dotenv()  # Load AWS_* and API_TOKEN from .env BEFORE touching boto3
 
-
 # This must match the token used in Gatekeeper user-data
 API_TOKEN = os.getenv("API_TOKEN", "supersecret123")
-
 
 # Optional: sanity check for AWS credentials (helps avoid 'Unable to locate credentials')
 required_aws_vars = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]
 missing = [v for v in required_aws_vars if not os.getenv(v)]
 if missing:
     raise RuntimeError(f"Missing AWS credentials in environment/.env: {', '.join(missing)}")
-
 
 from aws import config as aws_config
 from aws import ec2_utils
@@ -39,6 +36,7 @@ from aws import user_data
 def wait_for_gatekeeper_http(base_url: str, timeout: int = 300) -> None:
     """
     Poll /health on the gatekeeper until it responds 200 OK or timeout.
+    base_url should be like http://<public-ip>
     """
     url = base_url.rstrip("/") + "/health"
     start = time.time()
@@ -49,8 +47,10 @@ def wait_for_gatekeeper_http(base_url: str, timeout: int = 300) -> None:
             if resp.status_code == 200:
                 print("[INFO] Gatekeeper is healthy and responding.")
                 return
-        except Exception:
-            pass
+            else:
+                print(f"[DEBUG] Non-200 response: {resp.status_code} {resp.text}")
+        except Exception as e:
+            print(f"[DEBUG] Health check failed: {e}")
         print("[INFO] Gatekeeper not ready yet, waiting 5s...")
         time.sleep(5)
 
@@ -61,6 +61,7 @@ def run_benchmarks(gatekeeper_url: str) -> None:
     """
     Run 1000 READ and 1000 WRITE requests for each strategy
     by calling the benchmarking scripts via python -m.
+    gatekeeper_url should be 'http://<public-ip>/sql'
     """
     strategies = ["direct", "random", "custom"]
 
@@ -189,7 +190,8 @@ def main():
     if not gatekeeper_public_ip:
         raise RuntimeError("Gatekeeper does not have a public IP address.")
 
-    gatekeeper_base_url = f"http://{gatekeeper_public_ip}:8080"
+    # 👇 IMPORTANT: now using port 80 → base URL has NO :8080
+    gatekeeper_base_url = f"http://{gatekeeper_public_ip}"
     gatekeeper_sql_url = gatekeeper_base_url + "/sql"
 
     print(f"[INFO] Gatekeeper public base URL: {gatekeeper_base_url}")

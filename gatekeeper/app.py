@@ -1,3 +1,4 @@
+# gatekeeper/app.py
 from flask import Flask, request, jsonify
 import requests
 
@@ -47,7 +48,6 @@ def handle_sql():
 
         resp = requests.post(config.PROXY_URL, json=payload, timeout=10)
 
-        # Pass through status code and json
         try:
             resp_json = resp.json()
         except Exception:
@@ -66,5 +66,5 @@ def handle_sql():
 
 
 if __name__ == "__main__":
-    # Gatekeeper is internet-facing, you probably bind on port 8080 or 80 (through nginx)
-    app.run(host="0.0.0.0", port=8080, debug=config.DEBUG)
+    # 👈 IMPORTANT: now listening on port 80, not 8080
+    app.run(host="0.0.0.0", port=80, debug=config.DEBUG)

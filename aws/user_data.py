@@ -42,6 +42,7 @@ cat <<EOF >> /etc/mysql/mysql.conf.d/mysqld.cnf
 server-id = 1
 log_bin = /var/log/mysql/mysql-bin.log
 binlog_do_db = sakila
+bind-address = 0.0.0.0
 EOF
 
 systemctl restart mysql
@@ -107,6 +108,7 @@ cat <<EOF >> /etc/mysql/mysql.conf.d/mysqld.cnf
 server-id = {server_id}
 relay-log = /var/log/mysql/mysql-relay-bin.log
 binlog_do_db = sakila
+bind-address = 0.0.0.0
 EOF
 
 systemctl restart mysql
@@ -171,10 +173,10 @@ def render_gatekeeper_user_data(proxy_private_ip: str) -> str:
     - Clones repo
     - Installs requirements
     - Exports env vars for gatekeeper app
-    - Starts gatekeeper.app
+    - Starts gatekeeper.app (which now listens on port 80)
     """
     return f"""#!/bin/bash
-# Log script output
+# Log script output for debugging
 exec > /var/log/gatekeeper-user-data.log 2>&1
 set -xe
 
