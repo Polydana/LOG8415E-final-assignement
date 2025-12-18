@@ -1,0 +1,9 @@
+boto3
+botocore
+requests
+flask
+pandas
+matplotlib
+pyyaml
+python-dotenv
+mysql-connector-python

@@ -1,0 +1,4 @@
+node,tps,avg_latency_ms,p95_latency_ms
+manager,840.52,1.19,1.96
+worker1,835.04,1.19,1.96
+worker2,867.10,1.15,1.96
