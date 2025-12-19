@@ -1,42 +1,79 @@
+# benchmarking/run_writes.py
 import os
 import time
+from collections import Counter
+
 import requests
-import random
 
-GATEKEEPER_URL = os.getenv("GATEKEEPER_URL")
-API_TOKEN = os.getenv("API_TOKEN")
-STRATEGY = os.getenv("STRATEGY", "direct")
+TOTAL_REQUESTS = 1000
 
-if not GATEKEEPER_URL or not API_TOKEN:
-    raise RuntimeError("GATEKEEPER_URL and API_TOKEN env vars required")
 
-N = 1000
-start = time.time()
-success = 0
-fail = 0
+def main():
+    gatekeeper_url = os.getenv("GATEKEEPER_URL")
+    api_token = os.getenv("API_TOKEN", "supersecret123")
+    strategy = os.getenv("STRATEGY", "direct")
 
-for i in range(N):
-    actor_id = random.randint(1, 200)  # safe update
+    if not gatekeeper_url:
+        print("[ERROR] GATEKEEPER_URL env var is not set.")
+        return
+
+    print("=== WRITE benchmark ===")
+    print(f"Strategy        : {strategy}")
+    print(f"Gatekeeper URL  : {gatekeeper_url}")
+    print(f"Using API_TOKEN : {api_token}")
+
+    success = 0
+    fail = 0
+    first_error = None
+    error_codes = Counter()
+
+    # Safe “write” (no real data change)
     payload = {
-        "query": f"UPDATE actor SET first_name = first_name WHERE actor_id = {actor_id};",
-        "strategy": STRATEGY
+        "query": "UPDATE film SET rental_duration = rental_duration WHERE film_id = 1;",
+        "strategy": strategy,
     }
-    headers = {"X-API-TOKEN": API_TOKEN}
 
-    try:
-        r = requests.post(GATEKEEPER_URL, json=payload, headers=headers, timeout=5)
-        if r.status_code == 200:
-            success += 1
-        else:
+    headers = {
+        "Content-Type": "application/json",
+        "X-API-TOKEN": api_token,
+    }
+
+    start = time.time()
+    for i in range(TOTAL_REQUESTS):
+        try:
+            resp = requests.post(gatekeeper_url, json=payload, headers=headers, timeout=5)
+            if resp.status_code == 200:
+                success += 1
+            else:
+                fail += 1
+                error_codes[resp.status_code] += 1
+                if first_error is None:
+                    first_error = f"Status {resp.status_code}: {resp.text}"
+        except Exception as e:
             fail += 1
-    except Exception:
-        fail += 1
+            error_codes["EXCEPTION"] += 1
+            if first_error is None:
+                first_error = f"Exception: {repr(e)}"
+    elapsed = time.time() - start
 
-elapsed = time.time() - start
-print("=== WRITE benchmark ===")
-print(f"Strategy: {STRATEGY}")
-print(f"Total requests: {N}")
-print(f"Success: {success}")
-print(f"Fail: {fail}")
-print(f"Time: {elapsed:.2f}s")
-print(f"Throughput: {N/elapsed:.2f} req/s")
+    throughput = TOTAL_REQUESTS / elapsed if elapsed > 0 else 0.0
+
+    print("\n=== WRITE benchmark result ===")
+    print(f"Total requests: {TOTAL_REQUESTS}")
+    print(f"Success      : {success}")
+    print(f"Fail         : {fail}")
+    print(f"Time         : {elapsed:.2f}s")
+    print(f"Throughput   : {throughput:.2f} req/s")
+
+    if error_codes:
+        print("\n=== Error status code distribution ===")
+        for code, count in error_codes.items():
+            print(f"  {code}: {count} times")
+
+    if first_error:
+        print("\n*** Example error from first failed request ***")
+        print(first_error)
+
+
+if __name__ == "__main__":
+    main()

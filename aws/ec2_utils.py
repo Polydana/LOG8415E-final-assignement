@@ -102,3 +102,26 @@ def wait_for_ssh(instance_id: str, timeout: int = 600) -> None:
         print(f"[INFO] Waiting for public IP on {instance_id}...")
         time.sleep(10)
     raise TimeoutError(f"Timed out waiting for public IP on {instance_id}")
+
+
+_ec2 = boto3.client("ec2")
+
+def terminate_instances(instance_ids):
+    """
+    Terminates a list of EC2 instances and waits for them to reach terminated state.
+    """
+    if not instance_ids:
+        print("[WARN] terminate_instances called with empty list.")
+        return
+
+    try:
+        print(f"[INFO] Requesting termination for: {instance_ids}")
+        _ec2.terminate_instances(InstanceIds=instance_ids)
+
+        waiter = _ec2.get_waiter("instance_terminated")
+        print("[INFO] Waiting for instances to terminate...")
+        waiter.wait(InstanceIds=instance_ids)
+        print("[INFO] All instances terminated successfully.")
+
+    except Exception as exc:
+        print(f"[ERROR] Failed to terminate instances: {exc}")

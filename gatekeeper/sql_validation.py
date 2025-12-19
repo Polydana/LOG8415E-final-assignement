@@ -1,40 +1,30 @@
-from typing import Tuple
+# gatekeeper/sql_validation.py
+import re
+
+READ_RE = re.compile(r"^\s*select\b", re.I)
+WRITE_RE = re.compile(r"^\s*(insert|update|delete)\b", re.I)
 
 
-DANGEROUS_KEYWORDS = [
-    "drop ",
-    "truncate ",
-    "alter ",
-    "shutdown",
-    "grant ",
-    "revoke ",
-]
-
-
-def validate_sql(query: str) -> Tuple[bool, str]:
+def validate_sql(query: str):
     """
-    Returns (is_valid, reason_if_not_valid).
-    This is intentionally simple but enough for the assignment.
+    Very simple SQL validator:
+    - No empty queries
+    - No multiple statements
+    - Only allow SELECT for reads and INSERT/UPDATE/DELETE for writes
     """
+    if not query or not query.strip():
+        return False, "empty query not allowed"
 
     q = query.strip()
-    q_lower = q.lower()
 
-    if not q:
-        return False, "Empty query"
+    # Disallow multiple statements (simple check)
+    if ";" in q[:-1]:
+        return False, "multiple statements not allowed"
 
-    # Disallow very dangerous keywords
-    for kw in DANGEROUS_KEYWORDS:
-        if kw in q_lower:
-            return False, f"Query contains forbidden keyword: {kw.strip()}"
+    if READ_RE.match(q):
+        return True, "ok"
 
-    # For UPDATE and DELETE, require a WHERE clause
-    if q_lower.startswith("delete") or q_lower.startswith("update"):
-        if " where " not in q_lower:
-            return False, "UPDATE/DELETE without WHERE is not allowed"
+    if WRITE_RE.match(q):
+        return True, "ok"
 
-    # Optionally limit query length to avoid abuse
-    if len(q) > 5000:
-        return False, "Query too long"
-
-    return True, ""
+    return False, "only SELECT/INSERT/UPDATE/DELETE statements allowed"
