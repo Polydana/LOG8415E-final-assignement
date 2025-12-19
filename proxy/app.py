@@ -23,6 +23,7 @@ def get_connection(host: str):
         password=config.DB_PASSWORD,
         database=config.DB_NAME,
         port=int(config.DB_PORT),
+         connection_timeout=5, 
     )
 
 

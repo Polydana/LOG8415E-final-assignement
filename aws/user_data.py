@@ -10,24 +10,24 @@ def render_mysql_manager_user_data() -> str:
     - Installs MySQL + sysbench
     - Loads Sakila
     - Configures as replication master
+    - Allows remote connections (bind-address = 0.0.0.0)
+    - Creates users for replication and Sakila access from other hosts
     """
     return f"""#!/bin/bash
 set -xe
+exec > /var/log/mysql-manager-user-data.log 2>&1
 
-# Update system
+# Update system and install MySQL + tools
 apt-get update -y
-
-# Install utilities
 apt-get install -y mysql-server sysbench git wget unzip
 
 # Enable and start MySQL
 systemctl enable mysql
 systemctl start mysql
 
-# Secure basic MySQL and create users
+# Set root password and allow root client config
 mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_ROOT_PASSWORD}'; FLUSH PRIVILEGES;"
 
-# Allow root login with password
 cat <<EOF >/root/.my.cnf
 [client]
 user=root
@@ -35,19 +35,23 @@ password={config.MYSQL_ROOT_PASSWORD}
 EOF
 chmod 600 /root/.my.cnf
 
-# Configure MySQL for replication (log_bin, server-id, etc.)
-cat <<EOF >> /etc/mysql/mysql.conf.d/mysqld.cnf
+# === Allow remote connections: bind to all interfaces ===
+# Default Ubuntu conf usually has: bind-address = 127.0.0.1
+# We switch it to 0.0.0.0 so other instances in the VPC can connect.
+if grep -q "^bind-address" /etc/mysql/mysql.conf.d/mysqld.cnf; then
+  sed -i "s/^bind-address.*/bind-address = 0.0.0.0/" /etc/mysql/mysql.conf.d/mysqld.cnf
+else
+  echo "bind-address = 0.0.0.0" >> /etc/mysql/mysql.conf.d/mysqld.cnf
+fi
 
-# LOG8415E replication master
-server-id = 1
-log_bin = /var/log/mysql/mysql-bin.log
-binlog_do_db = sakila
-bind-address = 0.0.0.0
-EOF
+# === Create replication user and Sakila user, allowed from any host ===
+mysql -e "CREATE USER IF NOT EXISTS '{config.MYSQL_REPL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_REPL_PASSWORD}';"
+mysql -e "GRANT REPLICATION SLAVE ON *.* TO '{config.MYSQL_REPL_USER}'@'%';"
 
-systemctl restart mysql
+mysql -e "CREATE USER IF NOT EXISTS '{config.MYSQL_SAKILA_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_SAKILA_PASSWORD}';"
+mysql -e "GRANT ALL PRIVILEGES ON sakila.* TO '{config.MYSQL_SAKILA_USER}'@'%'; FLUSH PRIVILEGES;"
 
-# Download and install Sakila
+# === Download and install Sakila database ===
 cd /tmp
 wget https://downloads.mysql.com/docs/sakila-db.tar.gz
 tar xzf sakila-db.tar.gz
@@ -55,26 +59,19 @@ cd sakila-db
 mysql -e "SOURCE sakila-schema.sql;"
 mysql sakila < sakila-data.sql
 
-# Create replication user and Sakila user (after DB exists is fine)
-mysql -e "CREATE USER IF NOT EXISTS '{config.MYSQL_REPL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_REPL_PASSWORD}';"
-mysql -e "GRANT REPLICATION SLAVE ON *.* TO '{config.MYSQL_REPL_USER}'@'%';"
+# === Configure MySQL for replication (master) ===
+cat <<EOF >> /etc/mysql/mysql.conf.d/mysqld.cnf
 
-mysql -e "CREATE USER IF NOT EXISTS '{config.MYSQL_SAKILA_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_SAKILA_PASSWORD}';"
-mysql -e "GRANT ALL PRIVILEGES ON sakila.* TO '{config.MYSQL_SAKILA_USER}'@'%'; FLUSH PRIVILEGES;"
+# LOG8415E replication master
+server-id       = 1
+log_bin         = /var/log/mysql/mysql-bin.log
+binlog_do_db    = sakila
+EOF
 
-# (Optional) sysbench prepare & run on manager to have standalone benchmark
-sysbench /usr/share/sysbench/oltp_read_only.lua \\
-  --mysql-db=sakila \\
-  --mysql-user={config.MYSQL_SAKILA_USER} \\
-  --mysql-password={config.MYSQL_SAKILA_PASSWORD} prepare
-
-sysbench /usr/share/sysbench/oltp_read_only.lua \\
-  --mysql-db=sakila \\
-  --mysql-user={config.MYSQL_SAKILA_USER} \\
-  --mysql-password={config.MYSQL_SAKILA_PASSWORD} run
+# Restart MySQL to apply bind-address + replication settings
+systemctl restart mysql
 
 """
-
 
 def render_mysql_worker_user_data(server_id: int, manager_private_ip: str) -> str:
     """
