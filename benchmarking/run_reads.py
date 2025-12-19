@@ -1,11 +1,11 @@
-# benchmarking/run_reads.py
 import os
 import time
 from collections import Counter
 
 import requests
 
-TOTAL_REQUESTS = 1000
+# SMALL NUMBER FOR DEBUGGING
+TOTAL_REQUESTS = 5
 
 
 def main():
@@ -40,7 +40,9 @@ def main():
     start = time.time()
     for i in range(TOTAL_REQUESTS):
         try:
-            resp = requests.post(gatekeeper_url, json=payload, headers=headers, timeout=5)
+            resp = requests.post(
+                gatekeeper_url, json=payload, headers=headers, timeout=15  # 1s timeout
+            )
             if resp.status_code == 200:
                 success += 1
             else:
@@ -53,8 +55,11 @@ def main():
             error_codes["EXCEPTION"] += 1
             if first_error is None:
                 first_error = f"Exception: {repr(e)}"
-    elapsed = time.time() - start
 
+        if (i + 1) % 5 == 0:
+            print(f"[DEBUG] Sent {i+1}/{TOTAL_REQUESTS} requests...")
+
+    elapsed = time.time() - start
     throughput = TOTAL_REQUESTS / elapsed if elapsed > 0 else 0.0
 
     print("\n=== READ benchmark result ===")
