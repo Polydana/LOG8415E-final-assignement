@@ -144,7 +144,6 @@ mysql -e "START REPLICA;"
 """
 
 
-
 def render_proxy_user_data(manager_ip: str, worker_ips: List[str]) -> str:
     """
     User-data for Proxy instance:
@@ -152,8 +151,7 @@ def render_proxy_user_data(manager_ip: str, worker_ips: List[str]) -> str:
     - Clones repo
     - Installs requirements
     - Exports env vars for proxy app
-    - Waits for MySQL manager to be ready
-    - Starts proxy.app
+    - Starts proxy.app on port 5000
     """
     worker_ips_str = ",".join(worker_ips)
 
@@ -162,7 +160,7 @@ set -xe
 exec > /var/log/proxy-user-data.log 2>&1
 
 apt-get update -y
-apt-get install -y python3 python3-pip git mysql-client
+apt-get install -y python3 python3-pip git
 
 cd /home/ubuntu
 if [ ! -d "LOG8415E-final-assignement" ]; then
@@ -181,16 +179,7 @@ export DB_PORT="3306"
 export PROXY_STRATEGY="direct"
 export DEBUG="false"
 
-echo "Waiting for MySQL manager at {manager_ip}:3306..."
-for i in {{1..30}}; do
-  if mysql -h {manager_ip} -P 3306 -u{config.MYSQL_SAKILA_USER} -p{config.MYSQL_SAKILA_PASSWORD} -e "SELECT 1" sakila >/dev/null 2>&1; then
-    echo "MySQL is ready."
-    break
-  fi
-  echo "MySQL not ready yet, retrying in 5s..."
-  sleep 5
-done
-
+# Start the proxy (Flask) app on 0.0.0.0:5000
 nohup python3 -m proxy.app > /var/log/proxy.log 2>&1 &
 """
 
