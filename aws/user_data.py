@@ -204,8 +204,8 @@ pip3 install -r requirements.txt
 
 export MANAGER_HOST="{manager_ip}"
 export WORKER_HOSTS="{worker_ips_str}"
-export DB_USER="{config.MYSQL_SAKILA_USER}"
-export DB_PASSWORD="{config.MYSQL_SAKILA_PASSWORD}"
+export DB_USER="root"
+export DB_PASSWORD="{config.MYSQL_ROOT_PASSWORD}"
 export DB_NAME="sakila"
 export DB_PORT="3306"
 export PROXY_STRATEGY="direct"
