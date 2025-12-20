@@ -102,7 +102,7 @@ def run_benchmarks(gatekeeper_url: str) -> None:
             check=False,
         )
 
-        def ensure_mysql_port_open():
+def ensure_mysql_port_open():
     """
     Ensure that the security group used by all instances allows MySQL (3306)
     traffic between instances that share the same SG.
