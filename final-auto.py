@@ -14,6 +14,7 @@ import time
 import subprocess
 import sys
 import argparse
+import boto3
 
 
 import requests
@@ -101,6 +102,38 @@ def run_benchmarks(gatekeeper_url: str) -> None:
             check=False,
         )
 
+        def ensure_mysql_port_open():
+    """
+    Ensure that the security group used by all instances allows MySQL (3306)
+    traffic between instances that share the same SG.
+    """
+    print("\n=== Ensuring security group allows MySQL (3306) between instances ===")
+    ec2 = boto3.client("ec2", region_name=aws_config.REGION)
+
+    try:
+        ec2.authorize_security_group_ingress(
+            GroupId=aws_config.SECURITY_GROUP_ID,
+            IpPermissions=[
+                {
+                    "IpProtocol": "tcp",
+                    "FromPort": 3306,
+                    "ToPort": 3306,
+                    "UserIdGroupPairs": [
+                        {"GroupId": aws_config.SECURITY_GROUP_ID}
+                    ],
+                }
+            ],
+        )
+        print(f"[INFO] Opened port 3306 within SG {aws_config.SECURITY_GROUP_ID}.")
+    except ClientError as e:
+        # If the rule already exists, AWS throws InvalidPermission.Duplicate
+        code = e.response.get("Error", {}).get("Code", "")
+        if code == "InvalidPermission.Duplicate":
+            print(f"[INFO] Port 3306 rule already exists on SG {aws_config.SECURITY_GROUP_ID}.")
+        else:
+            print(f"[WARN] Could not modify SG {aws_config.SECURITY_GROUP_ID}: {e}")
+
+
 
 
 def main():
@@ -110,6 +143,7 @@ def main():
     print(f"[INFO] Key pair      : {aws_config.KEY_NAME}")
     print(f"[INFO] Security group: {aws_config.SECURITY_GROUP_ID}")
 
+    ensure_mysql_port_open()
     # --------------------------------------------------------------------------------
     # 1) Launch MySQL manager
     # --------------------------------------------------------------------------------
