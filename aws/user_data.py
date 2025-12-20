@@ -12,20 +12,21 @@ def render_mysql_manager_user_data() -> str:
     - Configures as replication master
     - Allows remote connections (bind-address = 0.0.0.0)
     - Creates users for replication and Sakila access from other hosts
+    - Ensures MySQL is actually running and listening
     """
     return f"""#!/bin/bash
 set -xe
 exec > /var/log/mysql-manager-user-data.log 2>&1
 
-# Update system and install MySQL + tools
+echo "=== [MANAGER] Updating system and installing MySQL + tools ==="
 apt-get update -y
 apt-get install -y mysql-server sysbench git wget unzip
 
-# Enable and start MySQL
+echo "=== [MANAGER] Enabling and starting MySQL ==="
 systemctl enable mysql
 systemctl start mysql
 
-# Set root password and allow root client config
+echo "=== [MANAGER] Setting root password ==="
 mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_ROOT_PASSWORD}'; FLUSH PRIVILEGES;"
 
 cat <<EOF >/root/.my.cnf
@@ -35,7 +36,7 @@ password={config.MYSQL_ROOT_PASSWORD}
 EOF
 chmod 600 /root/.my.cnf
 
-# === Allow remote connections: bind to all interfaces ===
+echo "=== [MANAGER] Binding MySQL to 0.0.0.0 ==="
 # Default Ubuntu conf usually has: bind-address = 127.0.0.1
 # We switch it to 0.0.0.0 so other instances in the VPC can connect.
 if grep -q "^bind-address" /etc/mysql/mysql.conf.d/mysqld.cnf; then
@@ -44,7 +45,20 @@ else
   echo "bind-address = 0.0.0.0" >> /etc/mysql/mysql.conf.d/mysqld.cnf
 fi
 
-# === Create replication user and Sakila/Proxy users, allowed from any host ===
+echo "=== [MANAGER] Restarting MySQL after bind-address change ==="
+systemctl restart mysql
+
+echo "=== [MANAGER] Waiting for MySQL to be up (after bind-address) ==="
+for i in {{1..30}}; do
+  if mysqladmin ping -h 127.0.0.1 --silent; then
+    echo "MySQL is up (phase 1)."
+    break
+  fi
+  echo "MySQL not ready yet (phase 1), retrying in 5s..."
+  sleep 5
+done
+
+echo "=== [MANAGER] Creating replication and Sakila/Proxy users (with remote access) ==="
 # Replication user
 mysql -e "CREATE USER IF NOT EXISTS '{config.MYSQL_REPL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_REPL_PASSWORD}';"
 mysql -e "GRANT REPLICATION SLAVE ON *.* TO '{config.MYSQL_REPL_USER}'@'%';"
@@ -53,13 +67,13 @@ mysql -e "GRANT REPLICATION SLAVE ON *.* TO '{config.MYSQL_REPL_USER}'@'%';"
 mysql -e "CREATE USER IF NOT EXISTS '{config.MYSQL_SAKILA_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_SAKILA_PASSWORD}';"
 mysql -e "GRANT ALL PRIVILEGES ON *.* TO '{config.MYSQL_SAKILA_USER}'@'%' WITH GRANT OPTION;"
 
-# (Optional but very useful) allow root to connect from any host too
+# Allow root from any host (backup)
 mysql -e "CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_ROOT_PASSWORD}';"
 mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;"
 
 mysql -e "FLUSH PRIVILEGES;"
 
-# === Download and install Sakila database ===
+echo "=== [MANAGER] Downloading and installing Sakila database ==="
 cd /tmp
 wget https://downloads.mysql.com/docs/sakila-db.tar.gz
 tar xzf sakila-db.tar.gz
@@ -67,7 +81,7 @@ cd sakila-db
 mysql -e "SOURCE sakila-schema.sql;"
 mysql sakila < sakila-data.sql
 
-# === Configure MySQL for replication (master) ===
+echo '=== [MANAGER] Configuring MySQL as replication master ==='
 cat <<EOF >> /etc/mysql/mysql.conf.d/mysqld.cnf
 
 # LOG8415E replication master
@@ -76,9 +90,20 @@ log_bin         = /var/log/mysql/mysql-bin.log
 binlog_do_db    = sakila
 EOF
 
-# Restart MySQL to apply bind-address + replication settings
+echo "=== [MANAGER] Restarting MySQL after replication config ==="
 systemctl restart mysql
 
+echo "=== [MANAGER] Waiting for MySQL to be up (final) ==="
+for i in {{1..30}}; do
+  if mysqladmin ping -h 127.0.0.1 --silent; then
+    echo "MySQL is up (final)."
+    break
+  fi
+  echo "MySQL not ready yet (final), retrying in 5s..."
+  sleep 5
+done
+
+echo "=== [MANAGER] Manager user-data complete ==="
 """
 
 def render_mysql_worker_user_data(server_id: int, manager_private_ip: str) -> str:
@@ -86,19 +111,23 @@ def render_mysql_worker_user_data(server_id: int, manager_private_ip: str) -> st
     User-data script for a MySQL worker (replica).
     - Installs MySQL
     - Configures as replication slave
+    - Creates the same DB users as the manager (sakila/proxy + root@'%')
     - Connects to manager
+    - Binds to 0.0.0.0 so proxy can reach it
     """
     return f"""#!/bin/bash
 set -xe
 exec > /var/log/mysql-worker-{server_id}-user-data.log 2>&1
 
+echo "=== [WORKER {server_id}] Updating system and installing MySQL ==="
 apt-get update -y
 apt-get install -y mysql-server git
 
+echo "=== [WORKER {server_id}] Enabling MySQL ==="
 systemctl enable mysql
 systemctl start mysql
 
-# Set root password
+echo "=== [WORKER {server_id}] Setting root password ==="
 mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_ROOT_PASSWORD}'; FLUSH PRIVILEGES;"
 
 cat <<EOF >/root/.my.cnf
@@ -108,7 +137,7 @@ password={config.MYSQL_ROOT_PASSWORD}
 EOF
 chmod 600 /root/.my.cnf
 
-# Configure as replication slave + bind to all interfaces
+echo "=== [WORKER {server_id}] Configuring replication + bind-address ==="
 cat <<EOF >> /etc/mysql/mysql.conf.d/mysqld.cnf
 
 # LOG8415E replication slave
@@ -118,29 +147,33 @@ binlog_do_db = sakila
 bind-address = 0.0.0.0
 EOF
 
+echo "=== [WORKER {server_id}] Restarting MySQL after config ==="
 systemctl restart mysql
 
-# === Create same proxy/sakila users on the workers ===
+echo "=== [WORKER {server_id}] Creating Sakila/Proxy DB users (remote access allowed) ==="
 mysql -e "CREATE USER IF NOT EXISTS '{config.MYSQL_SAKILA_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_SAKILA_PASSWORD}';"
 mysql -e "GRANT ALL PRIVILEGES ON *.* TO '{config.MYSQL_SAKILA_USER}'@'%' WITH GRANT OPTION;"
 
+echo "=== [WORKER {server_id}] Allowing root remote access (backup) ==="
 mysql -e "CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_ROOT_PASSWORD}';"
 mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;"
 
 mysql -e "FLUSH PRIVILEGES;"
 
-# Make sure the sakila database exists (it will be replicated, but create empty db just in case)
+echo "=== [WORKER {server_id}] Ensuring sakila DB exists (replica) ==="
 mysql -e "CREATE DATABASE IF NOT EXISTS sakila;"
 
-# Setup replication pointing to manager
+echo "=== [WORKER {server_id}] Configuring replication SOURCE ==="
 mysql -e "CHANGE REPLICATION SOURCE TO \\
   SOURCE_HOST='{manager_private_ip}', \\
   SOURCE_USER='{config.MYSQL_REPL_USER}', \\
   SOURCE_PASSWORD='{config.MYSQL_REPL_PASSWORD}', \\
   SOURCE_AUTO_POSITION=1;"
 
+echo "=== [WORKER {server_id}] Starting replication ==="
 mysql -e "START REPLICA;"
 
+echo "=== [WORKER {server_id}] Worker user-data complete ==="
 """
 
 
@@ -151,13 +184,12 @@ def render_proxy_user_data(manager_ip: str, worker_ips: List[str]) -> str:
     - Clones repo
     - Installs requirements
     - Exports env vars for proxy app
-    - Starts proxy.app on port 5000
+    - Starts proxy.app
     """
     worker_ips_str = ",".join(worker_ips)
 
     return f"""#!/bin/bash
 set -xe
-exec > /var/log/proxy-user-data.log 2>&1
 
 apt-get update -y
 apt-get install -y python3 python3-pip git
@@ -179,7 +211,6 @@ export DB_PORT="3306"
 export PROXY_STRATEGY="direct"
 export DEBUG="false"
 
-# Start the proxy (Flask) app on 0.0.0.0:5000
 nohup python3 -m proxy.app > /var/log/proxy.log 2>&1 &
 """
 
