@@ -208,19 +208,25 @@ def render_proxy_user_data(manager_ip: str, worker_ips: List[str]) -> str:
     worker_ips_str = ",".join(worker_ips)
 
     return f"""#!/bin/bash
+# Log everything to a file so we can debug
+exec > /var/log/proxy-user-data.log 2>&1
 set -xe
 
+echo "=== [PROXY] Updating system and installing Python + git + curl ==="
 apt-get update -y
-apt-get install -y python3 python3-pip git
+apt-get install -y python3 python3-pip git curl
 
+echo "=== [PROXY] Cloning repo ==="
 cd /home/ubuntu
 if [ ! -d "LOG8415E-final-assignement" ]; then
   git clone {config.GIT_REPO_URL} LOG8415E-final-assignement
 fi
 cd {config.REMOTE_PROJECT_PATH}
 
+echo "=== [PROXY] Installing requirements ==="
 pip3 install -r requirements.txt
 
+echo "=== [PROXY] Exporting env vars ==="
 export MANAGER_HOST="{manager_ip}"
 export WORKER_HOSTS="{worker_ips_str}"
 export DB_USER="root"
@@ -230,7 +236,13 @@ export DB_PORT="3306"
 export PROXY_STRATEGY="direct"
 export DEBUG="false"
 
+echo "=== [PROXY] Starting proxy.app on 0.0.0.0:5000 ==="
 nohup python3 -m proxy.app > /var/log/proxy.log 2>&1 &
+
+# small wait + simple local health check
+sleep 5
+echo "=== [PROXY] Checking if proxy is answering on localhost:5000/health ==="
+curl -sS http://localhost:5000/health || echo "Proxy health check FAILED (but continuing)."
 """
 
 

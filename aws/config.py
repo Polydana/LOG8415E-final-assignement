@@ -9,7 +9,7 @@ AMI_ID = os.getenv("AMI_ID", "ami-02029c87fa31fb148")
 KEY_NAME = os.getenv("KEY_NAME", "vockey")
 
 # Security group: you can pass via env or hardcode if prof allows
-SECURITY_GROUP_ID = os.getenv("SECURITY_GROUP_ID", "sg-0d451c9576db378ab")
+SECURITY_GROUP_ID = os.getenv("SECURITY_GROUP_ID", "sg-0340a92621f2f25e4")
 
 # EC2 instance types
 INSTANCE_TYPE_MANAGER = os.getenv("INSTANCE_TYPE_MANAGER", "t2.micro")

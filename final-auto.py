@@ -31,7 +31,7 @@ args = parser.parse_args()
 API_TOKEN = os.getenv("API_TOKEN", "supersecret123")
 
 # Optional: sanity check for AWS credentials (helps avoid 'Unable to locate credentials')
-required_aws_vars = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]
+required_aws_vars = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
 missing = [v for v in required_aws_vars if not os.getenv(v)]
 if missing:
     raise RuntimeError(f"Missing AWS credentials in environment/.env: {', '.join(missing)}")
