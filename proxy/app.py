@@ -67,7 +67,6 @@ def health():
     logger.info("Proxy health check OK")
     return jsonify({"status": "ok", "role": "proxy"}), 200
 
-
 @app.route("/sql", methods=["POST"])
 def handle_sql():
     data = request.get_json(silent=True) or {}
@@ -93,23 +92,39 @@ def handle_sql():
         cursor = conn.cursor()
         cursor.execute(query)
 
-        if query.strip().lower().startswith("select"):
+        q_lower = query.strip().lower()
+
+        if q_lower.startswith("select"):
             rows = cursor.fetchall()
+
+            # ✅ columns as a LIST, not a set
             columns = [desc[0] for desc in cursor.description]
+
+            # ✅ result is a LIST of dicts (fully JSON-serializable)
             result = [dict(zip(columns, row)) for row in rows]
+
             logger.info("SELECT returned %d rows", len(result))
-            return jsonify({"rows": result}), 200
+
+            return jsonify({
+                "rows": result,
+                "row_count": len(result),
+                "host_used": target_host,
+            }), 200
         else:
             affected = cursor.rowcount
             conn.commit()
             logger.info("Write query affected %d rows", affected)
-            return jsonify({"affected_rows": affected}), 200
+            return jsonify({"affected_rows": affected, "host_used": target_host}), 200
+
     except mysql.connector.Error as e:
         logger.exception("MySQL query error")
         return jsonify({"error": "MySQL query error", "details": str(e)}), 500
+
     except Exception as e:
-        logger.exception("Unexpected proxy error")
+        # This is where your "Unexpected proxy error" comes from
+        logger.exception("Unexpected error in proxy /sql")
         return jsonify({"error": "Unexpected proxy error", "details": str(e)}), 500
+
     finally:
         try:
             cursor.close()
@@ -119,6 +134,7 @@ def handle_sql():
             conn.close()
         except Exception:
             pass
+
 
 
 if __name__ == "__main__":
