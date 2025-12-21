@@ -59,19 +59,18 @@ for i in {{1..30}}; do
 done
 
 echo "=== [MANAGER] Creating replication and Sakila/Proxy users (with remote access) ==="
-# Replication user
-mysql -e "CREATE USER IF NOT EXISTS '{config.MYSQL_REPL_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_REPL_PASSWORD}';"
+# Replication user (keep using CREATE USER + GRANT, that's fine)
+mysql -e "CREATE USER IF NOT EXISTS '{config.MYSQL_REPL_USER}'@'%' IDENTIFIED BY '{config.MYSQL_REPL_PASSWORD}';"
 mysql -e "GRANT REPLICATION SLAVE ON *.* TO '{config.MYSQL_REPL_USER}'@'%';"
 
-# Sakila / Proxy user (used by the proxy app)
-mysql -e "CREATE USER IF NOT EXISTS '{config.MYSQL_SAKILA_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_SAKILA_PASSWORD}';"
-mysql -e "GRANT ALL PRIVILEGES ON *.* TO '{config.MYSQL_SAKILA_USER}'@'%' WITH GRANT OPTION;"
+# Sakila / Proxy user (used by the proxy app) - create via GRANT IDENTIFIED BY
+mysql -e "GRANT ALL PRIVILEGES ON *.* TO '{config.MYSQL_SAKILA_USER}'@'%' IDENTIFIED BY '{config.MYSQL_SAKILA_PASSWORD}' WITH GRANT OPTION;"
 
-# Allow root from any host (backup)
-mysql -e "CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_ROOT_PASSWORD}';"
-mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;"
+# Allow root from any host (backup) - also via GRANT IDENTIFIED BY
+mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '{config.MYSQL_ROOT_PASSWORD}' WITH GRANT OPTION;"
 
 mysql -e "FLUSH PRIVILEGES;"
+
 
 echo "=== [MANAGER] Downloading and installing Sakila database ==="
 cd /tmp
@@ -151,14 +150,13 @@ echo "=== [WORKER {server_id}] Restarting MySQL after config ==="
 systemctl restart mysql
 
 echo "=== [WORKER {server_id}] Creating Sakila/Proxy DB users (remote access allowed) ==="
-mysql -e "CREATE USER IF NOT EXISTS '{config.MYSQL_SAKILA_USER}'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_SAKILA_PASSWORD}';"
-mysql -e "GRANT ALL PRIVILEGES ON *.* TO '{config.MYSQL_SAKILA_USER}'@'%' WITH GRANT OPTION;"
+mysql -e "GRANT ALL PRIVILEGES ON *.* TO '{config.MYSQL_SAKILA_USER}'@'%' IDENTIFIED BY '{config.MYSQL_SAKILA_PASSWORD}' WITH GRANT OPTION;"
 
 echo "=== [WORKER {server_id}] Allowing root remote access (backup) ==="
-mysql -e "CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_ROOT_PASSWORD}';"
-mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;"
+mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '{config.MYSQL_ROOT_PASSWORD}' WITH GRANT OPTION;"
 
 mysql -e "FLUSH PRIVILEGES;"
+
 
 echo "=== [WORKER {server_id}] Ensuring sakila DB exists (replica) ==="
 mysql -e "CREATE DATABASE IF NOT EXISTS sakila;"
