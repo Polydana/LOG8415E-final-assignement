@@ -97,11 +97,21 @@ def handle_sql():
         if q_lower.startswith("select"):
             rows = cursor.fetchall()
 
-            # ✅ columns as a LIST, not a set
             columns = [desc[0] for desc in cursor.description]
 
-            # ✅ result is a LIST of dicts (fully JSON-serializable)
-            result = [dict(zip(columns, row)) for row in rows]
+            raw_result = [dict(zip(columns, row)) for row in rows]
+
+            # 🔧 Normalize any MySQL SET types (Python `set`) to plain lists
+            result = []
+            for row_dict in raw_result:
+                clean_row = {}
+                for k, v in row_dict.items():
+                    if isinstance(v, set):
+                        # convert SET(...) to list of strings (or ",".join(v) if you prefer)
+                        clean_row[k] = list(v)
+                    else:
+                        clean_row[k] = v
+                result.append(clean_row)
 
             logger.info("SELECT returned %d rows", len(result))
 
@@ -121,7 +131,6 @@ def handle_sql():
         return jsonify({"error": "MySQL query error", "details": str(e)}), 500
 
     except Exception as e:
-        # This is where your "Unexpected proxy error" comes from
         logger.exception("Unexpected error in proxy /sql")
         return jsonify({"error": "Unexpected proxy error", "details": str(e)}), 500
 
