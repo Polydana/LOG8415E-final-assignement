@@ -4,8 +4,7 @@ from collections import Counter
 
 import requests
 
-# SMALL NUMBER FOR DEBUGGING
-TOTAL_REQUESTS = 5
+TOTAL_REQUESTS = 1000
 
 
 def main():
