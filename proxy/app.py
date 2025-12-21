@@ -89,7 +89,7 @@ def handle_sql():
         logger.exception("MySQL connection error")
         return jsonify({"error": "MySQL connection error", "details": str(e)}), 500
 
-        try:
+    try:
         cursor = conn.cursor()
         cursor.execute(query)
 
