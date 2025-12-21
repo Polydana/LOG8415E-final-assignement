@@ -170,8 +170,13 @@ mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;"
 
 mysql -e "FLUSH PRIVILEGES;"
 
-echo "=== [WORKER {server_id}] Ensuring sakila DB exists (replica) ==="
-mysql -e "CREATE DATABASE IF NOT EXISTS sakila;"
+echo "=== [WORKER {server_id}] Downloading and installing Sakila database ==="
+cd /tmp
+wget -q https://downloads.mysql.com/docs/sakila-db.tar.gz
+tar xzf sakila-db.tar.gz
+cd sakila-db
+mysql -e "SOURCE sakila-schema.sql;"
+mysql sakila < sakila-data.sql
 
 echo "=== [WORKER {server_id}] Configuring replication SOURCE ==="
 mysql -e "CHANGE REPLICATION SOURCE TO \\
@@ -182,6 +187,9 @@ mysql -e "CHANGE REPLICATION SOURCE TO \\
 
 echo "=== [WORKER {server_id}] Starting replication ==="
 mysql -e "START REPLICA;"
+
+echo "=== [WORKER {server_id}] Worker user-data complete ==="
+
 
 echo "=== [WORKER {server_id}] Worker user-data complete ==="
 """

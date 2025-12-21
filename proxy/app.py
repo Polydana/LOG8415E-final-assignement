@@ -89,7 +89,7 @@ def handle_sql():
         logger.exception("MySQL connection error")
         return jsonify({"error": "MySQL connection error", "details": str(e)}), 500
 
-    try:
+        try:
         cursor = conn.cursor()
         cursor.execute(query)
 
@@ -107,6 +107,9 @@ def handle_sql():
     except mysql.connector.Error as e:
         logger.exception("MySQL query error")
         return jsonify({"error": "MySQL query error", "details": str(e)}), 500
+    except Exception as e:
+        logger.exception("Unexpected proxy error")
+        return jsonify({"error": "Unexpected proxy error", "details": str(e)}), 500
     finally:
         try:
             cursor.close()

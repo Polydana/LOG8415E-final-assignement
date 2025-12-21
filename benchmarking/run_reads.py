@@ -41,7 +41,7 @@ def main():
     for i in range(TOTAL_REQUESTS):
         try:
             resp = requests.post(
-                gatekeeper_url, json=payload, headers=headers, timeout=15  # 1s timeout
+                gatekeeper_url, json=payload, headers=headers, timeout=15  
             )
             if resp.status_code == 200:
                 success += 1
