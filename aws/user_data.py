@@ -26,8 +26,9 @@ echo "=== [MANAGER] Enabling and starting MySQL ==="
 systemctl enable mysql
 systemctl start mysql
 
-echo "=== [MANAGER] Setting root password ==="
-mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_ROOT_PASSWORD}'; FLUSH PRIVILEGES;"
+echo "=== [MANAGER] Setting root password (localhost) ==="
+# Don't fail the whole script if this ALTER fails (plugin/auth differences)
+mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{config.MYSQL_ROOT_PASSWORD}';" || true
 
 cat <<EOF >/root/.my.cnf
 [client]
@@ -59,18 +60,24 @@ for i in {{1..30}}; do
 done
 
 echo "=== [MANAGER] Creating replication and Sakila/Proxy users (with remote access) ==="
-# Replication user (keep using CREATE USER + GRANT, that's fine)
-mysql -e "CREATE USER IF NOT EXISTS '{config.MYSQL_REPL_USER}'@'%' IDENTIFIED BY '{config.MYSQL_REPL_PASSWORD}';"
+# Clean up any existing users so we know exactly what we have
+mysql -e "DROP USER IF EXISTS '{config.MYSQL_REPL_USER}'@'%';"
+mysql -e "DROP USER IF EXISTS '{config.MYSQL_SAKILA_USER}'@'%';"
+mysql -e "DROP USER IF EXISTS 'root'@'%';"
+
+# Replication user
+mysql -e "CREATE USER '{config.MYSQL_REPL_USER}'@'%' IDENTIFIED BY '{config.MYSQL_REPL_PASSWORD}';"
 mysql -e "GRANT REPLICATION SLAVE ON *.* TO '{config.MYSQL_REPL_USER}'@'%';"
 
-# Sakila / Proxy user (used by the proxy app) - create via GRANT IDENTIFIED BY
-mysql -e "GRANT ALL PRIVILEGES ON *.* TO '{config.MYSQL_SAKILA_USER}'@'%' IDENTIFIED BY '{config.MYSQL_SAKILA_PASSWORD}' WITH GRANT OPTION;"
+# Sakila / Proxy user (used by the proxy app)
+mysql -e "CREATE USER '{config.MYSQL_SAKILA_USER}'@'%' IDENTIFIED BY '{config.MYSQL_SAKILA_PASSWORD}';"
+mysql -e "GRANT ALL PRIVILEGES ON *.* TO '{config.MYSQL_SAKILA_USER}'@'%' WITH GRANT OPTION;"
 
-# Allow root from any host (backup) - also via GRANT IDENTIFIED BY
-mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '{config.MYSQL_ROOT_PASSWORD}' WITH GRANT OPTION;"
+# root from any host (what proxy is using now)
+mysql -e "CREATE USER 'root'@'%' IDENTIFIED BY '{config.MYSQL_ROOT_PASSWORD}';"
+mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;"
 
 mysql -e "FLUSH PRIVILEGES;"
-
 
 echo "=== [MANAGER] Downloading and installing Sakila database ==="
 cd /tmp
@@ -105,6 +112,7 @@ done
 echo "=== [MANAGER] Manager user-data complete ==="
 """
 
+
 def render_mysql_worker_user_data(server_id: int, manager_private_ip: str) -> str:
     """
     User-data script for a MySQL worker (replica).
@@ -126,8 +134,8 @@ echo "=== [WORKER {server_id}] Enabling MySQL ==="
 systemctl enable mysql
 systemctl start mysql
 
-echo "=== [WORKER {server_id}] Setting root password ==="
-mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{config.MYSQL_ROOT_PASSWORD}'; FLUSH PRIVILEGES;"
+echo "=== [WORKER {server_id}] Setting root password (localhost) ==="
+mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '{config.MYSQL_ROOT_PASSWORD}';" || true
 
 cat <<EOF >/root/.my.cnf
 [client]
@@ -150,13 +158,17 @@ echo "=== [WORKER {server_id}] Restarting MySQL after config ==="
 systemctl restart mysql
 
 echo "=== [WORKER {server_id}] Creating Sakila/Proxy DB users (remote access allowed) ==="
-mysql -e "GRANT ALL PRIVILEGES ON *.* TO '{config.MYSQL_SAKILA_USER}'@'%' IDENTIFIED BY '{config.MYSQL_SAKILA_PASSWORD}' WITH GRANT OPTION;"
+# Clean up and recreate so it's identical to manager
+mysql -e "DROP USER IF EXISTS '{config.MYSQL_SAKILA_USER}'@'%';"
+mysql -e "DROP USER IF EXISTS 'root'@'%';"
 
-echo "=== [WORKER {server_id}] Allowing root remote access (backup) ==="
-mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY '{config.MYSQL_ROOT_PASSWORD}' WITH GRANT OPTION;"
+mysql -e "CREATE USER '{config.MYSQL_SAKILA_USER}'@'%' IDENTIFIED BY '{config.MYSQL_SAKILA_PASSWORD}';"
+mysql -e "GRANT ALL PRIVILEGES ON *.* TO '{config.MYSQL_SAKILA_USER}'@'%' WITH GRANT OPTION;"
+
+mysql -e "CREATE USER 'root'@'%' IDENTIFIED BY '{config.MYSQL_ROOT_PASSWORD}';"
+mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION;"
 
 mysql -e "FLUSH PRIVILEGES;"
-
 
 echo "=== [WORKER {server_id}] Ensuring sakila DB exists (replica) ==="
 mysql -e "CREATE DATABASE IF NOT EXISTS sakila;"
@@ -173,6 +185,7 @@ mysql -e "START REPLICA;"
 
 echo "=== [WORKER {server_id}] Worker user-data complete ==="
 """
+
 
 
 def render_proxy_user_data(manager_ip: str, worker_ips: List[str]) -> str:
