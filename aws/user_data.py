@@ -1,4 +1,4 @@
-# aws/user_data.py
+
 from typing import List
 
 from . import config

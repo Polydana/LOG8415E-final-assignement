@@ -1,4 +1,3 @@
-# proxy/app.py
 import logging
 import random
 

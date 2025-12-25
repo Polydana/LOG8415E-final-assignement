@@ -1,4 +1,4 @@
-# gatekeeper/sql_validation.py
+
 import re
 
 READ_RE = re.compile(r"^\s*select\b", re.I)

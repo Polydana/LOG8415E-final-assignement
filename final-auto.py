@@ -30,7 +30,7 @@ args = parser.parse_args()
 # This must match the token used in Gatekeeper user-data
 API_TOKEN = os.getenv("API_TOKEN", "supersecret123")
 
-# Optional: sanity check for AWS credentials (helps avoid 'Unable to locate credentials')
+#  sanity check for AWS credentials (helps avoid 'Unable to locate credentials')
 required_aws_vars = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
 missing = [v for v in required_aws_vars if not os.getenv(v)]
 if missing:

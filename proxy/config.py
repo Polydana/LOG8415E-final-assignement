@@ -9,8 +9,8 @@ def _must_get(name: str) -> str:
 
 
 # Manager + workers
-MANAGER_HOST = _must_get("MANAGER_HOST")           # e.g. "10.0.1.10"
-WORKER_HOSTS = _must_get("WORKER_HOSTS").split(",")  # e.g. "10.0.1.11,10.0.1.12"
+MANAGER_HOST = _must_get("MANAGER_HOST")          
+WORKER_HOSTS = _must_get("WORKER_HOSTS").split(",")  
 
 # DB credentials
 DB_USER = _must_get("DB_USER")
